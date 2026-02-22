@@ -10,7 +10,7 @@ import json
 import asyncpg
 from asyncpg.pool import Pool
 
-from constants import DEFAULT_SETTINGS
+from utils.constants import DEFAULT_SETTINGS
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
