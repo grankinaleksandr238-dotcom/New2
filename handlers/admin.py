@@ -11,7 +11,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import asyncpg
 
 from bot_instance import dp, bot
-from db import (
+from utils.db import (
     db_pool, is_admin, is_super_admin, is_junior_admin, has_permission,
     get_admin_permissions, update_admin_permissions,
     ensure_user_exists, is_banned, get_user_balance, update_user_balance,
@@ -28,14 +28,14 @@ from db import (
     perform_cleanup, export_users_to_csv, export_table_to_csv,
     spawn_boss
 )
-from helpers import (
+from utils.helpers import (
     safe_send_message, send_with_media, auto_delete_reply, auto_delete_message,
     get_random_phrase, notify_chats, format_time_remaining, progress_bar
 )
-from constants import (
+from utils.constants import (
     PERMISSIONS_LIST, DEFAULT_SETTINGS, ITEMS_PER_PAGE, SUPER_ADMINS
 )
-from keyboards import (
+from utils.keyboards import (
     admin_main_keyboard, admin_users_keyboard, admin_shop_keyboard,
     admin_giveaway_keyboard, admin_channel_keyboard, admin_promo_keyboard,
     admin_tasks_keyboard, admin_ban_keyboard, admin_admins_keyboard,
@@ -44,7 +44,7 @@ from keyboards import (
     admin_media_keyboard, settings_categories_keyboard, settings_param_keyboard,
     purchase_action_keyboard, back_keyboard, cancel_keyboard
 )
-from states import (
+from utils.states import (
     AddBalance, RemoveBalance, AddReputation, RemoveReputation,
     AddExp, SetLevel, AddBitcoin, RemoveBitcoin, AddAuthority, RemoveAuthority,
     FindUser, AddShopItem, RemoveShopItem, EditShopItem,
