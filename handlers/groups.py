@@ -8,7 +8,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot_instance import dp, bot
-from db import (
+from utils.db import (
     db_pool, ensure_user_exists, is_banned, is_admin, is_chat_confirmed,
     get_user_balance, update_user_balance, get_user_bitcoin, update_user_bitcoin,
     get_user_stats, get_user_level, get_user_reputation, add_exp,
@@ -20,16 +20,16 @@ from db import (
     create_chat_confirmation_request, get_confirmed_chats, get_pending_chat_requests,
     add_confirmed_chat, update_chat_request_status
 )
-from helpers import (
+from utils.helpers import (
     safe_send_message, send_with_media, auto_delete_reply, auto_delete_message,
     get_random_phrase, format_time_remaining, progress_bar
 )
-from constants import (
+from utils.constants import (
     FIGHT_HIT_PHRASES, FIGHT_CRIT_PHRASES, FIGHT_COUNTER_PHRASES,
     SMUGGLE_START_PHRASES, SMUGGLE_CARGO, SUPER_ADMINS,
     ITEMS_PER_PAGE
 )
-from keyboards import confirm_chat_inline, subscription_inline
+from utils.keyboards import confirm_chat_inline, subscription_inline
 
 # ==================== БОЙ В ЧАТАХ (/fight) ====================
 @dp.message_handler(commands=['fight'], chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
