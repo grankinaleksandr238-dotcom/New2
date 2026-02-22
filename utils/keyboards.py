@@ -264,7 +264,8 @@ def repeat_bet_keyboard(game: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔁 Повторить", callback_data=f"repeat_{game}")]
     ])
-  def admin_main_keyboard(permissions: List[str]):
+
+def admin_main_keyboard(permissions: List[str]):
     all_buttons = [
         ("👥 Пользователи", "manage_users"),
         ("🛒 Магазин", "manage_shop"),
