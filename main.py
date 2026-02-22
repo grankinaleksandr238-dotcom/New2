@@ -7,7 +7,7 @@ from aiogram import executor
 from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
 
 from bot_instance import dp, bot
-from utils.db import create_db_pool, init_db, db_pool
+from utils.db import create_db_pool, init_db
 from utils.background import start_background_tasks
 from handlers import common, games, multiplayer, economy, groups, admin
 
