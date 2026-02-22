@@ -33,7 +33,7 @@ from utils.keyboards import (
 from utils.states import (
     CasinoBet, DiceBet, GuessBet, SlotsBet, RouletteBet
 )
-from db import slots_spin, format_slots_result, roulette_spin
+from utils.db import slots_spin, format_slots_result, roulette_spin
 
 # ==================== КАЗИНО И ИГРЫ ====================
 @dp.message_handler(lambda message: message.text == "🎰 Казино")
