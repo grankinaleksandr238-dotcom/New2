@@ -1,6 +1,6 @@
 from functools import wraps
 from aiogram import types
-from db import is_banned, is_admin, has_permission
+from utils.db import is_banned, is_admin, has_permission
 
 def check_ban():
     def decorator(func):
