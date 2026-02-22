@@ -274,22 +274,15 @@ async def guess_bet(message: types.Message, state: FSMContext):
     max_bet = await get_setting_float("casino_max_bet")
     max_input = await get_setting_float("max_input_number")
     if amount < min_bet:
-        await message.answer(f"❌ Минимальная ставка {min_bet:.2f}.")
-        return
-    if amount > max_bet:
-        await message.answer(f"❌ Максимальная ставка {max_bet:.2f}.")
-        return
-    if amount > max_input:
-        await message.answer(f"❌ Сумма слишком большая (максимум {max_input:.2f}).")
-        return
-    if amount > balance:
+            if amount > balance:
         await message.answer("❌ Недостаточно баксов.")
         return
 
     await state.update_data(amount=amount)
     await message.answer("Загадано число от 1 до 5. Введи свой вариант:")
     await GuessBet.number.set()
-  @dp.message_handler(state=GuessBet.number)
+
+@dp.message_handler(state=GuessBet.number)
 async def guess_number(message: types.Message, state: FSMContext):
     if message.text == "◀️ Назад":
         await state.finish()
