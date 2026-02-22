@@ -6,25 +6,25 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 
 from bot_instance import dp, bot
-from db import (
+from utils.db import (
     ensure_user_exists, is_banned, is_admin, get_user_balance, get_user_reputation,
     get_user_level, get_user_exp, get_user_stats, get_user_bitcoin, get_user_authority,
     get_total_user_authority, get_total_user_fights, update_user_balance,
     update_user_reputation, get_setting, get_setting_int, get_setting_float,
     check_subscription, db_pool
 )
-from helpers import (
+from utils.helpers import (
     safe_send_message, send_with_media, auto_delete_reply, auto_delete_message,
     progress_bar, get_random_phrase, notify_chats, find_user_by_input
 )
-from constants import (
+from utils.constants import (
     BONUS_PHRASES, ITEMS_PER_PAGE, SUPER_ADMINS
 )
-from keyboards import (
+from utils.keyboards import (
     main_menu_keyboard, back_keyboard, cancel_keyboard, subscription_inline,
     repeat_bet_keyboard
 )
-from states import PromoActivate
+from utils.states import PromoActivate
 
 # ==================== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК /cancel ====================
 @dp.message_handler(commands=['cancel'], state='*')
