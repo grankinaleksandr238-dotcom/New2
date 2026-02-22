@@ -11,7 +11,7 @@ from aiogram.utils.exceptions import (
 )
 
 from bot_instance import bot
-from db import (
+from utils.db import (
     db_pool, get_setting, get_setting_int, get_setting_float,
     get_confirmed_chats, get_media_file_id
 )
