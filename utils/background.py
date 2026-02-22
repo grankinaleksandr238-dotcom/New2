@@ -4,16 +4,16 @@ import random
 from datetime import datetime, timedelta, date
 
 from bot_instance import bot
-from db import (
+from utils.db import (
     db_pool, get_setting, get_setting_int, get_setting_float,
     get_confirmed_chats, get_user_reputation, get_media_file_id,
     update_user_bitcoin, update_user_balance, add_exp, set_smuggle_cooldown,
     spawn_boss
 )
-from constants import (
+from utils.constants import (
     SMUGGLE_SUCCESS_PHRASES, SMUGGLE_CAUGHT_PHRASES, SMUGGLE_LOST_PHRASES
 )
-from helpers import get_random_phrase, notify_chats
+from utils.helpers import get_random_phrase, notify_chats
 
 async def process_smuggle_runs():
     while True:
