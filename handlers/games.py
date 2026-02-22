@@ -8,28 +8,29 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 
 from bot_instance import dp, bot
-from db import (
+from utils.db import (
     ensure_user_exists, is_banned, is_admin, get_user_balance, get_user_level,
     update_user_balance, update_user_bitcoin, update_user_game_stats,
     update_user_reputation, add_exp, get_setting, get_setting_int, get_setting_float,
-    check_global_cooldown, set_global_cooldown, check_subscription, db_pool
+    check_global_cooldown, set_global_cooldown, check_subscription, db_pool,
+    slots_spin, format_slots_result, roulette_spin
 )
-from helpers import (
+from utils.helpers import (
     safe_send_message, send_with_media, auto_delete_reply, auto_delete_message,
     get_random_phrase, notify_chats
 )
-from constants import (
+from utils.constants import (
     CASINO_WIN_PHRASES, CASINO_LOSE_PHRASES, BIG_WIN_THRESHOLD,
     DICE_WIN_PHRASES, DICE_LOSE_PHRASES,
     GUESS_WIN_PHRASES, GUESS_LOSE_PHRASES,
     SLOTS_WIN_PHRASES, SLOTS_LOSE_PHRASES,
     ROULETTE_WIN_PHRASES, ROULETTE_LOSE_PHRASES
 )
-from keyboards import (
+from utils.keyboards import (
     main_menu_keyboard, back_keyboard, casino_menu_keyboard,
     repeat_bet_keyboard, subscription_inline
 )
-from states import (
+from utils.states import (
     CasinoBet, DiceBet, GuessBet, SlotsBet, RouletteBet
 )
 from db import slots_spin, format_slots_result, roulette_spin
