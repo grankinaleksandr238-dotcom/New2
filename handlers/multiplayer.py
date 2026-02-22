@@ -10,22 +10,23 @@ from aiogram.dispatcher import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot_instance import dp, bot
-from db import (
+from bot_instance import dp, bot
+from utils.db import (
     db_pool, ensure_user_exists, is_banned, is_admin,
     get_user_balance, update_user_balance, update_user_game_stats,
     add_exp, get_setting_int, get_setting_float, get_media_file_id,
     check_global_cooldown, set_global_cooldown, check_subscription
 )
-from helpers import (
+from utils.helpers import (
     safe_send_message, send_with_media, auto_delete_reply
 )
-from states import MultiplayerGame, RoomChat
-from keyboards import (
+from utils.states import MultiplayerGame, RoomChat
+from utils.keyboards import (
     back_keyboard, cancel_keyboard, multiplayer_lobby_keyboard,
     room_control_keyboard, room_action_keyboard, leave_room_keyboard,
     main_menu_keyboard, subscription_inline
 )
-from constants import MULTIPLAYER_PHRASES
+from utils.constants import MULTIPLAYER_PHRASES
 
 # ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 def generate_game_id():
