@@ -688,7 +688,8 @@ async def get_media_file_id(key: str) -> Optional[str]:
     async with db_pool.acquire() as conn:
         file_id = await conn.fetchval("SELECT file_id FROM media WHERE key=$1", key)
         return file_id
-        async def ensure_user_exists(user_id: int, username: str = None, first_name: str = None):
+
+async def ensure_user_exists(user_id: int, username: str = None, first_name: str = None):
     async with db_pool.acquire() as conn:
         exists = await conn.fetchval("SELECT 1 FROM users WHERE user_id=$1", user_id)
         if not exists:
