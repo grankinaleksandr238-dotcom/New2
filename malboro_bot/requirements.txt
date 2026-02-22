@@ -1,4 +1,6 @@
-
 aiogram==2.25.1
 asyncpg==0.29.0
 python-dotenv==1.0.0
+aiohttp==3.9.5
+yarl==1.9.4
+multidict==6.0.5
