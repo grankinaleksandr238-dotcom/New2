@@ -276,7 +276,6 @@ async def guess_bet(message: types.Message, state: FSMContext):
     if amount < min_bet:
             if amount > balance:
         await message.answer("❌ Недостаточно баксов.")
-        return
 
     await state.update_data(amount=amount)
     await message.answer("Загадано число от 1 до 5. Введи свой вариант:")
