@@ -8,7 +8,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot_instance import dp, bot
-from db import (
+from utils.db import (
     db_pool, ensure_user_exists, is_banned, is_admin, has_permission,
     get_user_balance, update_user_balance, update_user_total_spent,
     get_user_reputation, update_user_reputation, get_user_bitcoin,
@@ -17,22 +17,22 @@ from db import (
     get_random_user, find_user_by_input, check_global_cooldown, set_global_cooldown,
     get_media_file_id, check_subscription
 )
-from helpers import (
+from utils.helpers import (
     safe_send_message, send_with_media, auto_delete_reply, auto_delete_message,
     get_random_phrase, notify_chats, progress_bar, format_time_remaining
 )
-from constants import (
+from utils.constants import (
     PURCHASE_PHRASES, BIG_PURCHASE_THRESHOLD, CHAT_PURCHASE_PHRASES,
     THEFT_CHOICE_PHRASES, THEFT_COOLDOWN_PHRASES, THEFT_NO_MONEY_PHRASES,
     THEFT_SUCCESS_PHRASES, THEFT_FAIL_PHRASES, THEFT_DEFENSE_PHRASES,
     THEFT_VICTIM_DEFENSE_PHRASES, ITEMS_PER_PAGE, SUPER_ADMINS
 )
-from keyboards import (
+from utils.keyboards import (
     main_menu_keyboard, back_keyboard, cancel_keyboard, subscription_inline,
     theft_choice_keyboard, purchase_action_keyboard, repeat_bet_keyboard,
     admin_main_keyboard, auction_list_keyboard, auction_detail_keyboard
 )
-from states import (
+from utils.states import (
     PromoActivate, TheftTarget, AuctionBid
 )
 
