@@ -688,3 +688,884 @@ async def get_media_file_id(key: str) -> Optional[str]:
     async with db_pool.acquire() as conn:
         file_id = await conn.fetchval("SELECT file_id FROM media WHERE key=$1", key)
         return file_id
+        async def ensure_user_exists(user_id: int, username: str = None, first_name: str = None):
+    async with db_pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM users WHERE user_id=$1", user_id)
+        if not exists:
+            bonus = await get_setting_float("new_user_bonus")
+            await conn.execute(
+                "INSERT INTO users (user_id, username, first_name, joined_date, balance, reputation, total_spent, negative_balance, exp, level, strength, agility, defense, bitcoin_balance, authority_balance) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+                user_id, username, first_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                bonus, 0, 0, 0, 0, 1, 1, 1, 1, 0.0, 0
+            )
+            return True, bonus
+    return False, 0
+
+async def get_user_balance(user_id: int) -> float:
+    async with db_pool.acquire() as conn:
+        balance = await conn.fetchval("SELECT balance FROM users WHERE user_id=$1", user_id)
+        return float(balance) if balance is not None else 0.0
+
+async def update_user_balance(user_id: int, delta: float, conn=None):
+    delta = float(delta)
+    async def _update(conn):
+        row = await conn.fetchrow("SELECT balance, negative_balance FROM users WHERE user_id=$1", user_id)
+        if not row:
+            await ensure_user_exists(user_id)
+            row = {'balance': 0.0, 'negative_balance': 0.0}
+        balance = float(row['balance'])
+        negative = float(row['negative_balance']) if row['negative_balance'] else 0.0
+        new_balance = balance + delta
+        if new_balance < 0:
+            negative += abs(new_balance)
+            new_balance = 0.0
+        new_balance = round(new_balance, 2)
+        negative = round(negative, 2)
+        await conn.execute(
+            "UPDATE users SET balance=$1, negative_balance=$2 WHERE user_id=$3",
+            new_balance, negative, user_id
+        )
+    if conn:
+        await _update(conn)
+    else:
+        async with db_pool.acquire() as new_conn:
+            await _update(new_conn)
+
+async def get_user_bitcoin(user_id: int) -> float:
+    async with db_pool.acquire() as conn:
+        btc = await conn.fetchval("SELECT bitcoin_balance FROM users WHERE user_id=$1", user_id)
+        return float(btc) if btc is not None else 0.0
+
+async def update_user_bitcoin(user_id: int, delta: float, conn=None):
+    delta = float(delta)
+    async def _update(conn):
+        row = await conn.fetchrow("SELECT bitcoin_balance FROM users WHERE user_id=$1", user_id)
+        if not row:
+            await ensure_user_exists(user_id)
+            row = {'bitcoin_balance': 0.0}
+        current = float(row['bitcoin_balance'])
+        new_balance = current + delta
+        if new_balance < 0:
+            raise ValueError("Недостаточно биткоинов")
+        new_balance = round(new_balance, 4)
+        await conn.execute(
+            "UPDATE users SET bitcoin_balance=$1 WHERE user_id=$2",
+            new_balance, user_id
+        )
+    if conn:
+        await _update(conn)
+    else:
+        async with db_pool.acquire() as new_conn:
+            await _update(new_conn)
+
+async def get_user_authority(user_id: int) -> int:
+    async with db_pool.acquire() as conn:
+        auth = await conn.fetchval("SELECT authority_balance FROM users WHERE user_id=$1", user_id)
+        return auth if auth is not None else 0
+
+async def update_user_authority(user_id: int, delta: int, conn=None):
+    async def _update(conn):
+        await conn.execute(
+            "UPDATE users SET authority_balance = authority_balance + $1 WHERE user_id=$2",
+            delta, user_id
+        )
+    if conn:
+        await _update(conn)
+    else:
+        async with db_pool.acquire() as new_conn:
+            await _update(new_conn)
+
+async def get_user_reputation(user_id: int) -> int:
+    async with db_pool.acquire() as conn:
+        rep = await conn.fetchval("SELECT reputation FROM users WHERE user_id=$1", user_id)
+        return rep if rep is not None else 0
+
+async def update_user_reputation(user_id: int, delta: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute("UPDATE users SET reputation = reputation + $1 WHERE user_id=$2", delta, user_id)
+
+async def get_user_stats(user_id: int) -> dict:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT level, strength, agility, defense FROM users WHERE user_id=$1", user_id)
+        if row:
+            return dict(row)
+        return {'level': 1, 'strength': 1, 'agility': 1, 'defense': 1}
+
+async def update_user_stats(user_id: int, strength_delta=0, agility_delta=0, defense_delta=0):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET strength = strength + $1, agility = agility + $2, defense = defense + $3 WHERE user_id=$4",
+            strength_delta, agility_delta, defense_delta, user_id
+        )
+
+async def update_user_game_stats(user_id: int, game: str, win: bool, conn=None):
+    async def _update(conn):
+        if win:
+            if game == 'casino':
+                await conn.execute("UPDATE users SET casino_wins = casino_wins + 1 WHERE user_id=$1", user_id)
+            elif game == 'dice':
+                await conn.execute("UPDATE users SET dice_wins = dice_wins + 1 WHERE user_id=$1", user_id)
+            elif game == 'guess':
+                await conn.execute("UPDATE users SET guess_wins = guess_wins + 1 WHERE user_id=$1", user_id)
+            elif game == 'slots':
+                await conn.execute("UPDATE users SET slots_wins = slots_wins + 1 WHERE user_id=$1", user_id)
+            elif game == 'roulette':
+                await conn.execute("UPDATE users SET roulette_wins = roulette_wins + 1 WHERE user_id=$1", user_id)
+            elif game == 'multiplayer':
+                await conn.execute("UPDATE users SET multiplayer_wins = multiplayer_wins + 1 WHERE user_id=$1", user_id)
+        else:
+            if game == 'casino':
+                await conn.execute("UPDATE users SET casino_losses = casino_losses + 1 WHERE user_id=$1", user_id)
+            elif game == 'dice':
+                await conn.execute("UPDATE users SET dice_losses = dice_losses + 1 WHERE user_id=$1", user_id)
+            elif game == 'guess':
+                await conn.execute("UPDATE users SET guess_losses = guess_losses + 1 WHERE user_id=$1", user_id)
+            elif game == 'slots':
+                await conn.execute("UPDATE users SET slots_losses = slots_losses + 1 WHERE user_id=$1", user_id)
+            elif game == 'roulette':
+                await conn.execute("UPDATE users SET roulette_losses = roulette_losses + 1 WHERE user_id=$1", user_id)
+            elif game == 'multiplayer':
+                await conn.execute("UPDATE users SET multiplayer_losses = multiplayer_losses + 1 WHERE user_id=$1", user_id)
+    if conn:
+        await _update(conn)
+    else:
+        async with db_pool.acquire() as new_conn:
+            await _update(new_conn)
+
+async def add_exp(user_id: int, exp: int, conn=None):
+    async def _add(conn):
+        user = await conn.fetchrow("SELECT exp, level FROM users WHERE user_id=$1", user_id)
+        if not user:
+            return
+        new_exp = user['exp'] + exp
+        level = user['level']
+        level_mult = await get_setting_int("level_multiplier")
+        if level_mult <= 0:
+            level_mult = 1
+        levels_gained = 0
+        while new_exp >= level * level_mult:
+            new_exp -= level * level_mult
+            level += 1
+            levels_gained += 1
+        await conn.execute(
+            "UPDATE users SET exp=$1, level=$2 WHERE user_id=$3",
+            new_exp, level, user_id
+        )
+        if levels_gained > 0:
+            str_inc = await get_setting_int("stat_strength_per_level") * levels_gained
+            agi_inc = await get_setting_int("stat_agility_per_level") * levels_gained
+            def_inc = await get_setting_int("stat_defense_per_level") * levels_gained
+            await update_user_stats(user_id, str_inc, agi_inc, def_inc)
+            for lvl in range(level - levels_gained + 1, level + 1):
+                await reward_level_up(user_id, lvl, conn)
+    if conn:
+        await _add(conn)
+    else:
+        async with db_pool.acquire() as conn2:
+            await _add(conn2)
+
+async def reward_level_up(user_id: int, new_level: int, conn=None):
+    async def _reward(conn):
+        reward = await conn.fetchrow(
+            "SELECT coins, reputation FROM level_rewards WHERE level=$1",
+            new_level
+        )
+        if reward:
+            await update_user_balance(user_id, float(reward['coins']), conn=conn)
+            await update_user_reputation(user_id, reward['reputation'])
+    if conn:
+        await _reward(conn)
+    else:
+        async with db_pool.acquire() as conn2:
+            await _reward(conn2)
+
+async def get_user_level(user_id: int) -> int:
+    async with db_pool.acquire() as conn:
+        level = await conn.fetchval("SELECT level FROM users WHERE user_id=$1", user_id)
+        return level if level is not None else 1
+
+async def get_user_exp(user_id: int) -> int:
+    async with db_pool.acquire() as conn:
+        exp = await conn.fetchval("SELECT exp FROM users WHERE user_id=$1", user_id)
+        return exp if exp is not None else 0
+
+async def update_user_total_spent(user_id: int, amount: float):
+    async with db_pool.acquire() as conn:
+        await conn.execute("UPDATE users SET total_spent = total_spent + $1 WHERE user_id=$2", amount, user_id)
+
+async def get_random_user(exclude_id: int):
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT user_id FROM users 
+            WHERE user_id != $1 AND user_id NOT IN (SELECT user_id FROM banned_users)
+            ORDER BY RANDOM() LIMIT 1
+        """, exclude_id)
+        return row['user_id'] if row else None
+
+async def check_global_cooldown(user_id: int, command: str) -> Tuple[bool, int]:
+    cooldown = await get_setting_int("global_cooldown_seconds")
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT last_used FROM global_cooldowns WHERE user_id=$1 AND command=$2", user_id, command)
+        if row and row['last_used']:
+            diff = datetime.now() - row['last_used']
+            remaining = cooldown - diff.total_seconds()
+            if remaining > 0:
+                return False, int(remaining)
+    return True, 0
+
+async def set_global_cooldown(user_id: int, command: str):
+    async with db_pool.acquire() as conn:
+        await conn.execute('''
+            INSERT INTO global_cooldowns (user_id, command, last_used)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, command) DO UPDATE SET last_used = $3
+        ''', user_id, command, datetime.now())
+
+async def get_business_type_list(only_available: bool = True) -> List[dict]:
+    async with db_pool.acquire() as conn:
+        if only_available:
+            rows = await conn.fetch("SELECT * FROM business_types WHERE available = TRUE ORDER BY base_price_btc")
+        else:
+            rows = await conn.fetch("SELECT * FROM business_types ORDER BY base_price_btc")
+        result = []
+        for r in rows:
+            d = dict(r)
+            d['base_price_btc'] = float(d['base_price_btc'])
+            result.append(d)
+        return result
+
+async def get_business_type(business_type_id: int) -> Optional[dict]:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM business_types WHERE id=$1", business_type_id)
+        if row:
+            d = dict(row)
+            d['base_price_btc'] = float(d['base_price_btc'])
+            return d
+        return None
+
+async def get_user_businesses(user_id: int) -> List[dict]:
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT ub.*, bt.name, bt.emoji, bt.base_price_btc, bt.base_income_cents, bt.max_level
+            FROM user_businesses ub
+            JOIN business_types bt ON ub.business_type_id = bt.id
+            WHERE ub.user_id = $1
+            ORDER BY bt.base_price_btc
+        """, user_id)
+        result = []
+        for r in rows:
+            d = dict(r)
+            d['base_price_btc'] = float(d['base_price_btc'])
+            result.append(d)
+        return result
+
+async def get_user_business(user_id: int, business_type_id: int) -> Optional[dict]:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT ub.*, bt.name, bt.emoji, bt.base_price_btc, bt.base_income_cents, bt.max_level
+            FROM user_businesses ub
+            JOIN business_types bt ON ub.business_type_id = bt.id
+            WHERE ub.user_id = $1 AND ub.business_type_id = $2
+        """, user_id, business_type_id)
+        if row:
+            d = dict(row)
+            d['base_price_btc'] = float(d['base_price_btc'])
+            return d
+        return None
+
+async def get_business_price(business_type: dict, level: int) -> float:
+    base_price = business_type['base_price_btc']
+    if level == 1:
+        return base_price
+    else:
+        upgrade_base = await get_setting_float("business_upgrade_cost_per_level")
+        cost = upgrade_base * (level ** 1.5)
+        return round(cost, 2)
+
+async def get_business_income(business_type: dict, level: int) -> int:
+    return business_type['base_income_cents'] * level
+
+async def create_user_business(user_id: int, business_type_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO user_businesses (user_id, business_type_id, level, last_collection, accumulated) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (user_id, business_type_id) DO NOTHING",
+            user_id, business_type_id, 1, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 0
+        )
+
+async def update_business_income(user_id: int, conn=None):
+    async def _update(conn):
+        now = datetime.now()
+        businesses = await conn.fetch(
+            "SELECT ub.*, bt.base_income_cents FROM user_businesses ub JOIN business_types bt ON ub.business_type_id = bt.id WHERE ub.user_id=$1",
+            user_id
+        )
+        for biz in businesses:
+            if biz['last_collection']:
+                try:
+                    last_col = datetime.strptime(biz['last_collection'], "%Y-%m-%d %H:%M:%S")
+                    hours_passed = int((now - last_col).total_seconds() // 3600)
+                    if hours_passed > 0:
+                        income_per_hour = biz['base_income_cents'] * biz['level']
+                        new_accum = biz['accumulated'] + hours_passed * income_per_hour
+                        await conn.execute(
+                            "UPDATE user_businesses SET accumulated=$1, last_collection=$2 WHERE id=$3",
+                            new_accum, now.strftime("%Y-%m-%d %H:%M:%S"), biz['id']
+                        )
+                except:
+                    pass
+    if conn:
+        await _update(conn)
+    else:
+        async with db_pool.acquire() as new_conn:
+            await _update(new_conn)
+
+async def collect_business_income(user_id: int, business_id: int) -> Tuple[bool, str]:
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            biz = await conn.fetchrow("SELECT * FROM user_businesses WHERE id=$1 AND user_id=$2", business_id, user_id)
+            if not biz:
+                return False, "Бизнес не найден."
+            if biz['accumulated'] == 0:
+                return False, "Нет дохода для сбора."
+            amount_cents = biz['accumulated']
+            coins = amount_cents // 100
+            remainder = amount_cents % 100
+            if coins > 0:
+                await update_user_balance(user_id, float(coins), conn=conn)
+            await conn.execute(
+                "UPDATE user_businesses SET accumulated=$1, last_collection=$2 WHERE id=$3",
+                remainder, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), business_id
+            )
+            return True, f"Собрано {coins} баксов и {remainder} центов."
+
+async def upgrade_business(user_id: int, business_id: int) -> Tuple[bool, str]:
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            biz = await conn.fetchrow("""
+                SELECT ub.*, bt.base_price_btc, bt.base_income_cents, bt.max_level 
+                FROM user_businesses ub 
+                JOIN business_types bt ON ub.business_type_id = bt.id 
+                WHERE ub.id=$1 AND ub.user_id=$2
+            """, business_id, user_id)
+            if not biz:
+                return False, "Бизнес не найден."
+            if biz['level'] >= biz['max_level']:
+                return False, f"Бизнес уже максимального уровня ({biz['max_level']})."
+            base_price = float(biz['base_price_btc'])
+            cost = await get_business_price({'base_price_btc': base_price}, biz['level'] + 1)
+            btc_balance = await get_user_bitcoin(user_id)
+            if btc_balance < cost - 0.0001:
+                return False, f"Недостаточно биткоинов. Нужно {cost:.2f} BTC, у вас {btc_balance:.4f}."
+            await update_user_bitcoin(user_id, -cost, conn=conn)
+            await conn.execute(
+                "UPDATE user_businesses SET level = level + 1 WHERE id=$1",
+                business_id
+            )
+            return True, f"✅ Бизнес улучшен до уровня {biz['level'] + 1}! Потрачено {cost:.2f} BTC."
+
+async def get_chat_authority(chat_id: int, user_id: int) -> int:
+    async with db_pool.acquire() as conn:
+        val = await conn.fetchval("SELECT authority FROM chat_authority WHERE chat_id=$1 AND user_id=$2", chat_id, user_id)
+        return val if val is not None else 0
+
+async def add_chat_authority(chat_id: int, user_id: int, amount: int, damage: int = 0):
+    async with db_pool.acquire() as conn:
+        await conn.execute('''
+            INSERT INTO chat_authority (chat_id, user_id, authority, total_damage, fights)
+            VALUES ($1, $2, $3, $4, 1)
+            ON CONFLICT (chat_id, user_id) DO UPDATE
+            SET authority = chat_authority.authority + $3,
+                total_damage = chat_authority.total_damage + $4,
+                fights = chat_authority.fights + 1
+        ''', chat_id, user_id, amount, damage)
+
+async def get_total_user_authority(user_id: int) -> int:
+    async with db_pool.acquire() as conn:
+        total = await conn.fetchval("SELECT SUM(authority) FROM chat_authority WHERE user_id=$1", user_id)
+        return total or 0
+
+async def get_total_user_fights(user_id: int) -> Tuple[int, int]:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT SUM(fights) as total_fights, SUM(total_damage) as total_damage FROM chat_authority WHERE user_id=$1",
+            user_id
+        )
+        return (row['total_fights'] or 0, row['total_damage'] or 0)
+
+async def spend_chat_authority(chat_id: int, user_id: int, amount: int) -> bool:
+    current = await get_chat_authority(chat_id, user_id)
+    if current < amount:
+        return False
+    async with db_pool.acquire() as conn:
+        await conn.execute("UPDATE chat_authority SET authority = authority - $1 WHERE chat_id=$2 AND user_id=$3", amount, chat_id, user_id)
+    return True
+
+async def log_fight(chat_id: int, user_id: int, damage: int, authority: int, outcome: str):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO fight_logs (chat_id, user_id, timestamp, damage, authority_gained, outcome) VALUES ($1, $2, $3, $4, $5, $6)",
+            chat_id, user_id, datetime.now(), damage, authority, outcome
+        )
+
+async def can_fight(chat_id: int, user_id: int) -> Tuple[bool, int]:
+    cooldown = await get_setting_int("fight_cooldown_minutes")
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT last_fight FROM fight_cooldowns WHERE chat_id=$1 AND user_id=$2", chat_id, user_id)
+        if row and row['last_fight']:
+            diff = datetime.now() - row['last_fight']
+            remaining = cooldown * 60 - diff.total_seconds()
+            if remaining > 0:
+                return False, int(remaining)
+        return True, 0
+
+async def set_fight_cooldown(chat_id: int, user_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute('''
+            INSERT INTO fight_cooldowns (chat_id, user_id, last_fight)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (chat_id, user_id) DO UPDATE SET last_fight = $3
+        ''', chat_id, user_id, datetime.now())
+        BOSS_NAMES = [
+    "Дон Корлеоне", "Крёстный отец", "Аль Капоне", "Люциано", "Гамбино",
+    "Джон Готти", "Фрэнк Костелло", "Мейер Лански", "Багси Сигел",
+    "Сальваторе Теста", "Карло Гамбино", "Пол Кастеллано", "Винсент Джиганте",
+    "Крёстный отец", "Мафиози", "Гангстер", "Рэкетир"
+]
+
+BOSS_DESCRIPTIONS = [
+    "Глава мафиозного клана, держит в страхе весь район.",
+    "Безжалостный гангстер, правая рука дона.",
+    "Известный рэкетир, контролирует подпольный бизнес.",
+    "Старый вор в законе, уважаемый в криминальном мире.",
+    "Молодой и амбициозный лидер банды.",
+    "Торговец оружием, всегда при деньгах.",
+    "Налётчик со стажем, его боятся даже полицейские.",
+    "Киллер, на счету которого десятки жертв.",
+    "Хозяин подпольных казино и притонов.",
+    "Смотрящий за городом, решает все вопросы."
+]
+
+async def spawn_boss(chat_id: int, level: int = None, image_file_id: str = None):
+    if level is None:
+        level = random.randint(1, 5)
+    name = random.choice(BOSS_NAMES)
+    description = random.choice(BOSS_DESCRIPTIONS)
+    hp_mult = await get_setting_int("boss_hp_multiplier")
+    hp = level * hp_mult * random.randint(5, 10)
+    base_reward_coins = await get_setting_int("boss_reward_coins")
+    variance_coins = await get_setting_int("boss_reward_coins_variance")
+    reward_coins = base_reward_coins + random.randint(-variance_coins, variance_coins)
+    base_reward_btc = await get_setting_int("boss_reward_bitcoin")
+    variance_btc = await get_setting_int("boss_reward_bitcoin_variance")
+    reward_btc = base_reward_btc + random.randint(-variance_btc, variance_btc)
+    now = datetime.now()
+    expires_at = now + timedelta(hours=2)
+    async with db_pool.acquire() as conn:
+        boss_id = await conn.fetchval(
+            "INSERT INTO bosses (chat_id, name, level, hp, max_hp, spawned_at, expires_at, reward_coins, reward_bitcoin, participants, status, image_file_id, description) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id",
+            chat_id, name, level, hp, hp, now.strftime("%Y-%m-%d %H:%M:%S"),
+            expires_at.strftime("%Y-%m-%d %H:%M:%S"), reward_coins, reward_btc, [], 'active', image_file_id, description
+        )
+        await conn.execute(
+            "UPDATE confirmed_chats SET boss_last_spawn=$1, boss_spawn_count = boss_spawn_count + 1 WHERE chat_id=$2",
+            now.strftime("%Y-%m-%d %H:%M:%S"), chat_id
+        )
+    return boss_id
+
+async def finish_boss_fight(boss_id: int):
+    async with db_pool.acquire() as conn:
+        boss = await conn.fetchrow("SELECT * FROM bosses WHERE id=$1", boss_id)
+        if not boss or boss['status'] != 'active':
+            return
+        participants = boss['participants'] or []
+        if not participants:
+            await conn.execute("UPDATE bosses SET status='defeated' WHERE id=$1", boss_id)
+            return
+        reward_coins = boss['reward_coins']
+        reward_btc = boss['reward_bitcoin']
+        coins_per_player = reward_coins // len(participants)
+        btc_per_player = reward_btc // len(participants)
+        remainder_coins = reward_coins % len(participants)
+        remainder_btc = reward_btc % len(participants)
+        for i, uid in enumerate(participants):
+            coins = coins_per_player + (1 if i < remainder_coins else 0)
+            btc = btc_per_player + (1 if i < remainder_btc else 0)
+            await update_user_balance(uid, float(coins), conn=conn)
+            await update_user_bitcoin(uid, float(btc), conn=conn)
+            exp = await get_setting_int("exp_per_game_win")
+            await add_exp(uid, exp, conn=conn)
+        await conn.execute("UPDATE bosses SET status='defeated' WHERE id=$1", boss_id)
+
+async def calculate_fight_damage(strength: int) -> int:
+    base = await get_setting_int("fight_base_damage")
+    variance = await get_setting_int("fight_damage_variance")
+    damage = base + strength // 2 + random.randint(-variance, variance)
+    return max(1, damage)
+
+async def calculate_fight_authority() -> int:
+    min_auth = await get_setting_int("fight_authority_min")
+    max_auth = await get_setting_int("fight_authority_max")
+    return random.randint(min_auth, max_auth)
+
+def is_critical(strength: int, agility: int) -> bool:
+    chance = 5 + agility * 2
+    if chance > 50:
+        chance = 50
+    return random.randint(1, 100) <= chance
+
+def is_counter(defense: int) -> bool:
+    chance = 5 + defense * 1
+    if chance > 40:
+        chance = 40
+    return random.randint(1, 100) <= chance
+
+async def slots_spin() -> Tuple[List[str], float, bool]:
+    symbols = ['🍒', '🍋', '🍊', '7️⃣', '💎']
+    result = [random.choice(symbols) for _ in range(3)]
+    win_prob = await get_setting_float("slots_win_probability")
+    win = random.random() * 100 <= win_prob
+    if not win:
+        while result[0] == result[1] or result[1] == result[2] or result[0] == result[2]:
+            result = [random.choice(symbols) for _ in range(3)]
+        return result, 0, False
+    else:
+        if random.random() < 0.1:
+            sym = random.choice(symbols)
+            result = [sym, sym, sym]
+        else:
+            sym = random.choice(symbols)
+            pos = random.randint(0, 2)
+            result = [random.choice(symbols) for _ in range(3)]
+            result[pos] = sym
+            result[(pos+1)%3] = sym
+        if result[0] == result[1] == result[2]:
+            if result[0] == '7️⃣':
+                multiplier = await get_setting_float("slots_multiplier_seven")
+            elif result[0] == '💎':
+                multiplier = await get_setting_float("slots_multiplier_diamond")
+            else:
+                multiplier = await get_setting_float("slots_multiplier_three")
+            return result, multiplier, True
+        else:
+            return result, 2.0, True
+
+def format_slots_result(symbols: List[str]) -> str:
+    return " | ".join(symbols)
+
+async def roulette_spin(bet_type: str, bet_number: int = None) -> Tuple[int, str, bool]:
+    number = random.randint(0, 36)
+    color = 'green' if number == 0 else ('red' if number % 2 == 0 else 'black')
+    if bet_type == 'number':
+        if bet_number == number:
+            return number, color, True
+        else:
+            return number, color, False
+    elif bet_type == 'red':
+        if color == 'red':
+            return number, color, True
+        else:
+            return number, color, False
+    elif bet_type == 'black':
+        if color == 'black':
+            return number, color, True
+        else:
+            return number, color, False
+    elif bet_type == 'green':
+        if color == 'green':
+            return number, color, True
+        else:
+            return number, color, False
+    else:
+        return number, color, False
+
+async def check_smuggle_cooldown(user_id: int) -> Tuple[bool, int]:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT cooldown_until FROM smuggle_cooldowns WHERE user_id=$1", user_id)
+        if row and row['cooldown_until']:
+            cooldown_until = row['cooldown_until']
+            if isinstance(cooldown_until, str):
+                cooldown_until = datetime.strptime(cooldown_until, "%Y-%m-%d %H:%M:%S")
+            remaining = (cooldown_until - datetime.now()).total_seconds()
+            if remaining > 0:
+                return False, int(remaining)
+    return True, 0
+
+async def set_smuggle_cooldown(user_id: int, penalty: int = 0):
+    base = await get_setting_int("smuggle_cooldown_minutes")
+    cooldown_until = datetime.now() + timedelta(minutes=base + penalty)
+    async with db_pool.acquire() as conn:
+        await conn.execute('''
+            INSERT INTO smuggle_cooldowns (user_id, cooldown_until)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id) DO UPDATE SET cooldown_until = $2
+        ''', user_id, cooldown_until)
+
+def generate_game_id():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def calculate_hand_value(cards):
+    value = 0
+    aces = 0
+    for card in cards:
+        rank = card[:-1]
+        if rank in ['J', 'Q', 'K']:
+            value += 10
+        elif rank == 'A':
+            aces += 1
+            value += 11
+        else:
+            value += int(rank)
+    while value > 21 and aces:
+        value -= 10
+        aces -= 1
+    return value
+
+def create_deck():
+    suits = ['♠', '♥', '♦', '♣']
+    ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+    deck = [f"{rank}{suit}" for suit in suits for rank in ranks]
+    random.shuffle(deck)
+    return deck
+
+async def perform_cleanup(manual=False):
+    days_bosses = await get_setting_int("cleanup_days_bosses")
+    days_auctions = await get_setting_int("cleanup_days_auctions")
+    days_purchases = await get_setting_int("cleanup_days_purchases")
+    days_giveaways = await get_setting_int("cleanup_days_giveaways")
+    days_tasks = await get_setting_int("cleanup_days_user_tasks")
+    days_fight = await get_setting_int("cleanup_days_fight_logs")
+    days_smuggle = await get_setting_int("cleanup_days_smuggle")
+    days_orders = await get_setting_int("cleanup_days_bitcoin_orders")
+
+    now = datetime.now()
+    cutoff_bosses = (now - timedelta(days=days_bosses)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_purchases = (now - timedelta(days=days_purchases)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_giveaways = (now - timedelta(days=days_giveaways)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_tasks = (now - timedelta(days=days_tasks)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_smuggle = (now - timedelta(days=days_smuggle)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_auctions = now - timedelta(days=days_auctions)
+    cutoff_fight = now - timedelta(days=days_fight)
+    cutoff_orders = now - timedelta(days=days_orders)
+
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM bosses WHERE status IN ('defeated', 'expired') AND spawned_at < $1", cutoff_bosses)
+        await conn.execute("DELETE FROM boss_attacks WHERE attack_time < $1", cutoff_bosses)
+        await conn.execute("DELETE FROM purchases WHERE status IN ('completed','rejected') AND purchase_date < $1", cutoff_purchases)
+        await conn.execute("DELETE FROM giveaways WHERE status='completed' AND end_date < $1", cutoff_giveaways)
+        await conn.execute("DELETE FROM user_tasks WHERE expires_at IS NOT NULL AND expires_at < $1", cutoff_tasks)
+        await conn.execute("DELETE FROM smuggle_runs WHERE status IN ('completed', 'failed') AND end_time < $1", cutoff_smuggle)
+        await conn.execute("DELETE FROM auctions WHERE status='ended' AND end_time < $1", cutoff_auctions)
+        await conn.execute("DELETE FROM fight_logs WHERE timestamp < $1", cutoff_fight)
+        await conn.execute("DELETE FROM bitcoin_orders WHERE status IN ('completed', 'cancelled') AND created_at < $1", cutoff_orders)
+
+        cooldown_minutes = await get_setting_int("fight_cooldown_minutes")
+        cutoff_cooldown = now - timedelta(minutes=cooldown_minutes * 2)
+        await conn.execute("DELETE FROM global_cooldowns WHERE last_used < $1", cutoff_cooldown)
+
+    if manual:
+        logging.info("Ручная очистка выполнена.")
+    else:
+        logging.info("Автоматическая очистка выполнена.")
+
+async def export_users_to_csv() -> bytes:
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM users ORDER BY user_id")
+    if not rows:
+        return b""
+    import csv, io
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(dict(rows[0]).keys())
+    for row in rows:
+        row_dict = dict(row)
+        for k, v in row_dict.items():
+            if isinstance(v, (asyncpg.pgproto.pgdecimal.Decimal, float)):
+                row_dict[k] = float(v)
+        writer.writerow(row_dict.values())
+    return output.getvalue().encode('utf-8')
+
+ALLOWED_TABLES = ['users', 'purchases', 'bosses', 'auctions', 'giveaways', 'tasks', 'chat_authority', 'fight_logs', 'bitcoin_orders']
+
+async def export_table_to_csv(table: str) -> Optional[bytes]:
+    if table not in ALLOWED_TABLES:
+        return None
+    async with db_pool.acquire() as conn:
+        try:
+            exists = await conn.fetchval(
+                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)",
+                table
+            )
+            if not exists:
+                return None
+            rows = await conn.fetch(f"SELECT * FROM {table} ORDER BY id")
+        except Exception:
+            return None
+        if not rows:
+            return None
+        import csv, io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(dict(rows[0]).keys())
+        for row in rows:
+            row_dict = dict(row)
+            for k, v in row_dict.items():
+                if isinstance(v, (asyncpg.pgproto.pgdecimal.Decimal, float)):
+                    row_dict[k] = float(v)
+            writer.writerow(row_dict.values())
+        return output.getvalue().encode('utf-8')
+
+async def get_order_book() -> Dict[str, List[Dict]]:
+    async with db_pool.acquire() as conn:
+        buy_orders = await conn.fetch("""
+            SELECT price, SUM(amount) as total_amount, COUNT(*) as count
+            FROM bitcoin_orders
+            WHERE type='buy' AND status='active'
+            GROUP BY price
+            ORDER BY price DESC
+        """)
+        sell_orders = await conn.fetch("""
+            SELECT price, SUM(amount) as total_amount, COUNT(*) as count
+            FROM bitcoin_orders
+            WHERE type='sell' AND status='active'
+            GROUP BY price
+            ORDER BY price ASC
+        """)
+        bids = []
+        for r in buy_orders:
+            bids.append({
+                'price': r['price'],
+                'total_amount': float(r['total_amount']),
+                'count': r['count']
+            })
+        asks = []
+        for r in sell_orders:
+            asks.append({
+                'price': r['price'],
+                'total_amount': float(r['total_amount']),
+                'count': r['count']
+            })
+        return {'bids': bids, 'asks': asks}
+
+async def get_active_orders(order_type: str = None) -> List[dict]:
+    async with db_pool.acquire() as conn:
+        if order_type == 'buy':
+            rows = await conn.fetch("SELECT * FROM bitcoin_orders WHERE type='buy' AND status='active' ORDER BY price DESC, created_at ASC")
+        elif order_type == 'sell':
+            rows = await conn.fetch("SELECT * FROM bitcoin_orders WHERE type='sell' AND status='active' ORDER BY price ASC, created_at ASC")
+        else:
+            rows = await conn.fetch("SELECT * FROM bitcoin_orders WHERE status='active' ORDER BY created_at DESC")
+        result = []
+        for r in rows:
+            d = dict(r)
+            d['amount'] = float(d['amount'])
+            d['total_locked'] = float(d['total_locked'])
+            result.append(d)
+        return result
+
+async def create_bitcoin_order(user_id: int, order_type: str, amount: float, price: int) -> int:
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                if order_type == 'sell':
+                    current_btc = await get_user_bitcoin(user_id)
+                    if current_btc < amount - 0.0001:
+                        raise ValueError("Недостаточно BTC")
+                    await update_user_bitcoin(user_id, -amount, conn=conn)
+                    total_locked = amount
+                else:
+                    total_cost = amount * price
+                    current_balance = await get_user_balance(user_id)
+                    if current_balance < total_cost - 0.01:
+                        raise ValueError("Недостаточно баксов")
+                    max_input = await get_setting_float("max_input_number")
+                    if total_cost > max_input:
+                        raise ValueError(f"Сумма слишком большая (максимум {max_input:.2f})")
+                    await update_user_balance(user_id, -total_cost, conn=conn)
+                    total_locked = total_cost
+
+                order_id = await conn.fetchval(
+                    "INSERT INTO bitcoin_orders (user_id, type, amount, price, total_locked) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+                    user_id, order_type, amount, price, total_locked
+                )
+                await match_orders(conn)
+                return order_id
+    except ValueError as e:
+        raise e
+    except Exception as e:
+        logging.error(f"Unexpected error in create_bitcoin_order for user {user_id}: {e}", exc_info=True)
+        raise ValueError("Внутренняя ошибка сервера. Попробуйте позже.")
+
+async def cancel_bitcoin_order(order_id: int, user_id: int) -> bool:
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            order = await conn.fetchrow("SELECT * FROM bitcoin_orders WHERE id=$1 AND user_id=$2 AND status='active'", order_id, user_id)
+            if not order:
+                return False
+            total_locked = float(order['total_locked'])
+            if order['type'] == 'sell':
+                await update_user_bitcoin(user_id, total_locked, conn=conn)
+            else:
+                await update_user_balance(user_id, total_locked, conn=conn)
+            await conn.execute("UPDATE bitcoin_orders SET status='cancelled' WHERE id=$1", order_id)
+            return True
+
+async def match_orders(conn):
+    while True:
+        buy = await conn.fetchrow("""
+            SELECT id, user_id, price, amount, total_locked
+            FROM bitcoin_orders
+            WHERE type='buy' AND status='active'
+            ORDER BY price DESC, created_at ASC
+            LIMIT 1
+        """)
+        sell = await conn.fetchrow("""
+            SELECT id, user_id, price, amount, total_locked
+            FROM bitcoin_orders
+            WHERE type='sell' AND status='active'
+            ORDER BY price ASC, created_at ASC
+            LIMIT 1
+        """)
+        if not buy or not sell or buy['price'] < sell['price']:
+            break
+
+        buy_amount = float(buy['amount'])
+        buy_total_locked = float(buy['total_locked'])
+        sell_amount = float(sell['amount'])
+        sell_total_locked = float(sell['total_locked'])
+        trade_price = sell['price']
+
+        trade_amount = min(buy_amount, sell_amount)
+        total_cost = trade_amount * trade_price
+
+        buyer_id = buy['user_id']
+        seller_id = sell['user_id']
+
+        await update_user_balance(seller_id, total_cost, conn=conn)
+        await update_user_bitcoin(buyer_id, trade_amount, conn=conn)
+
+        new_buy_amount = max(0, buy_amount - trade_amount)
+        new_sell_amount = max(0, sell_amount - trade_amount)
+        new_buy_locked = max(0, buy_total_locked - total_cost)
+        new_sell_locked = max(0, sell_total_locked - trade_amount)
+
+        new_buy_amount = round(new_buy_amount, 8)
+        new_sell_amount = round(new_sell_amount, 8)
+        new_buy_locked = round(new_buy_locked, 8)
+        new_sell_locked = round(new_sell_locked, 8)
+
+        if new_buy_amount <= 1e-8:
+            await conn.execute("UPDATE bitcoin_orders SET status='completed', amount=0, total_locked=0 WHERE id=$1", buy['id'])
+        else:
+            await conn.execute("UPDATE bitcoin_orders SET amount=$1, total_locked=$2 WHERE id=$3", new_buy_amount, new_buy_locked, buy['id'])
+
+        if new_sell_amount <= 1e-8:
+            await conn.execute("UPDATE bitcoin_orders SET status='completed', amount=0, total_locked=0 WHERE id=$1", sell['id'])
+        else:
+            await conn.execute("UPDATE bitcoin_orders SET amount=$1, total_locked=$2 WHERE id=$3", new_sell_amount, new_sell_locked, sell['id'])
+
+        await conn.execute(
+            "INSERT INTO bitcoin_trades (buy_order_id, sell_order_id, amount, price, buyer_id, seller_id) VALUES ($1, $2, $3, $4, $5, $6)",
+            buy['id'], sell['id'], trade_amount, trade_price, buyer_id, seller_id
+        )
